@@ -6,6 +6,19 @@
 #define TASK_STACK_SIZE 4096  // Rozmiar stosu dla tasków
 #define TASK_PRIORITY 1       // Priorytet tasków
 
+#define BUTTON_X         6
+#define BUTTON_Y         2
+#define BUTTON_A         5
+#define BUTTON_B         1
+#define BUTTON_SELECT    0
+#define BUTTON_START    16
+uint32_t button_mask = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUTTON_START) |
+                       (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
+
+uint32_t button_mask2 = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUTTON_START) |
+                       (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
+
+
 uint8_t broadcastAddress[] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}; // MAC docelowego ESP
 
 // Struktura wiadomości
@@ -36,7 +49,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
     //Serial.printf("\nOtrzymano %d bajtów od: %02X:%02X:%02X:%02X:%02X:%02X\n",
     //              len, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
-    if (compareMAC(mac, macPad)) {
+    if (compareMAC(mac, macModulXiao)) {
         memcpy(&receivedPadData, data, sizeof(receivedPadData));
         //Serial.println("📥 Otrzymano dane z Pada");
     } 
@@ -48,6 +61,7 @@ void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
         Serial.println("❌ Nieznany nadawca!");
     }
 }
+
 
 
 
@@ -111,14 +125,52 @@ void displayTask(void *parameter) {
         Serial.printf("SeqNum:\t\t%u\n", receivedPadData.seqNum);
         Serial.printf("Lewy Joy:\tX: %d\tY: %d\n", receivedPadData.L_Joystick_x_message, receivedPadData.L_Joystick_y_message);
         Serial.printf("Prawy Joy:\tX: %d\tY: %d\n", receivedPadData.R_Joystick_x_message, receivedPadData.R_Joystick_y_message);
-        Serial.printf("Przyciski:\tL: %s\tR: %s\n", 
-                      receivedPadData.L_Joystick_button_message ? "Wciśnięty" : "Nie", 
-                      receivedPadData.R_Joystick_button_message ? "Wciśnięty" : "Nie");
+        
+    if (! (receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_A))) {
+      Serial.println("Button L_A pressed");
+    }
+    if (! (receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_B))) {
+      Serial.println("Button L_B pressed");
+    }
+    if (! (receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_Y))) {
+      Serial.println("Button L_Y pressed");
+    }
+    if (! (receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_X))) {
+      Serial.println("Button L_X pressed");
+    }
+    if (! (receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_SELECT))) {
+      Serial.println("Button L_SELECT pressed");
+    }
+    if (! (receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_START))) {
+      Serial.println("Button L_START pressed");
+    }
+
+    if (! (receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_A))) {
+      Serial.println("Button R_A pressed");
+    }
+    if (! (receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_B))) {
+      Serial.println("Button R_B pressed");
+    }
+    if (! (receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_Y))) {
+      Serial.println("Button R_Y pressed");
+    }
+    if (! (receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_X))) {
+      Serial.println("Button R_X pressed");
+    }
+    if (! (receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_SELECT))) {
+      Serial.println("Button R_SELECT pressed");
+    }
+    if (! (receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_START))) {
+      Serial.println("Button R_START pressed");
+    }
+Serial.println();
+
+
         Serial.println("\n------------------------------------------\n");
 
         // Sekcja Platformy
         Serial.println(">>> DANE PLATFORMY <<<");
-        Serial.printf("Czas:\t\t%u ms\n", receivedPlatformData.timestamp);
+        Serial.printf("Czas:\t\t%u ms\n", receivedPlatformData.seqNum);
         Serial.printf("Predkosci:\tFL: %d\tFR: %d\tRL: %d\tRR: %d\n", 
                       receivedPlatformData.frontLeftSpeed, 
                       receivedPlatformData.frontRightSpeed, 
@@ -132,7 +184,7 @@ void displayTask(void *parameter) {
 
         Serial.println("\n==========================================");
 
-        vTaskDelay(20 / portTICK_PERIOD_MS); // Odświeżanie 5 Hz (200 ms)
+        vTaskDelay(100 / portTICK_PERIOD_MS); // Odświeżanie 10 Hz
     }
 }
 
@@ -156,7 +208,7 @@ void setup() {
     // Konfiguracja odbiorcy
    // Dodanie Pada jako peer
     esp_now_peer_info_t peerInfo = {};
-    memcpy(peerInfo.peer_addr, macPad, 6);
+    memcpy(peerInfo.peer_addr, macModulXiao, 6);
     peerInfo.channel = 0;
     peerInfo.encrypt = false;
     peerInfo.ifidx = WIFI_IF_STA;  // WAŻNE! Określenie interfejsu
