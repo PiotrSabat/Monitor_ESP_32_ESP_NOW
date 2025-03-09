@@ -49,13 +49,21 @@ void handleWebSocketMessage(void *parameter) {
             json["R_X"] = receivedPadData.R_Joystick_x_message;
             json["R_Y"] = receivedPadData.R_Joystick_y_message;
 
-            // Stany przycisków
+            // Stany przycisków z lewego pada
             json["L_Button_A"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_A));
             json["L_Button_B"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_B));
             json["L_Button_X"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_X));
             json["L_Button_Y"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_Y));
             json["L_Button_SELECT"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_SELECT));
             json["L_Button_START"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_START));
+
+            // Dodanie przycisków z prawego pada
+            json["R_Button_A"] = !(receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_A));
+            json["R_Button_B"] = !(receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_B));
+            json["R_Button_X"] = !(receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_X));
+            json["R_Button_Y"] = !(receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_Y));
+            json["R_Button_SELECT"] = !(receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_SELECT));
+            json["R_Button_START"] = !(receivedPadData.R_Joystick_buttons_message & (1UL << BUTTON_START));
 
             // Serializacja JSON → tekst
             String jsonString;
@@ -96,15 +104,97 @@ void setup() {
 
     // Start serwera HTTP
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/html",
-            "<html><body>"
-            "<h1>ESP32 WebSocket</h1>"
-            "<div id='data'></div>"
-            "<script>"
-            "const ws = new WebSocket('ws://' + window.location.host + '/ws');"
-            "ws.onmessage = e => document.getElementById('data').innerText = e.data;"
-            "</script>"
-            "</body></html>");
+        request->send(200, "text/html", R"rawliteral(
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>ESP32 WebSocket</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            margin: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        .card {
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 2px 2px 12px rgba(0,0,0,0.1);
+            text-align: center;
+            font-size: 16px;
+        }
+        h1 {
+            text-align: center;
+            color: #4CAF50;
+        }
+    </style>
+</head>
+<body>
+    <h1>ESP32 WebSocket Data</h1>
+    <div class="container">
+        <div class="card" id="lx">L_X: --</div>
+        <div class="card" id="ly">L_Y: --</div>
+        <div class="card" id="rx">R_X: --</div>
+        <div class="card" id="ry">R_Y: --</div>
+        <div class="card" id="timestamp">Timestamp: --</div>
+        <div class="card" id="button_L_a">Button L_A: --</div>
+        <div class="card" id="button_L_b">Button L_B: --</div>
+        <div class="card" id="button_L_x">Button L_X: --</div>
+        <div class="card" id="button_L_y">Button L_Y: --</div>
+        <div class="card" id="button_L_select">L_Button Select: --</div>
+        <div class="card" id="button_L_start">L_Button Start: --</div>
+        <div class="card" id="button_R_a">Button R_A: --</div>
+        <div class="card" id="button_R_b">Button R_B: --</div>
+        <div class="card" id="button_R_x">Button R_X: --</div>
+        <div class="card" id="button_R_y">Button R_Y: --</div>
+        <div class="card" id="button_R_select">R_Button Select: --</div>
+        <div class="card" id="button_R_start">R_Button Start: --</div>
+    
+    </div>
+
+    <script>
+        const ws = new WebSocket('ws://' + window.location.host + '/ws');
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                document.getElementById('lx').innerText = 'L_X: ' + data.L_X;
+                document.getElementById('ly').innerText = 'L_Y: ' + data.L_Y;
+                document.getElementById('rx').innerText = 'R_X: ' + data.R_X;
+                document.getElementById('ry').innerText = 'R_Y: ' + data.R_Y;
+                document.getElementById('timestamp').innerText = 'Timestamp: ' + data.timestamp;
+                document.getElementById('button_L_a').innerText = 'Button L_A: ' + (data.L_Button_A ? 'Pressed' : 'Released');
+                document.getElementById('button_L_b').innerText = 'Button L_B: ' + (data.L_Button_B ? 'Pressed' : 'Released');
+                document.getElementById('button_L_x').innerText = 'Button L_X: ' + (data.L_Button_X ? 'Pressed' : 'Released');
+                document.getElementById('button_L_y').innerText = 'Button L_Y: ' + (data.L_Button_Y ? 'Pressed' : 'Released');
+                document.getElementById('button_L_select').innerText = 'Button L_Select: ' + (data.L_Button_SELECT ? 'Pressed' : 'Released');
+                document.getElementById('button_L_start').innerText = 'Button L_Start: ' + (data.L_Button_START ? 'Pressed' : 'Released');
+
+                document.getElementById('button_R_a').innerText = 'Button R_A: ' + (data.R_Button_A ? 'Pressed' : 'Released');
+                document.getElementById('button_R_b').innerText = 'Button R_B: ' + (data.R_Button_B ? 'Pressed' : 'Released');
+                document.getElementById('button_R_x').innerText = 'Button R_X: ' + (data.R_Button_X ? 'Pressed' : 'Released');
+                document.getElementById('button_R_y').innerText = 'Button R_Y: ' + (data.R_Button_Y ? 'Pressed' : 'Released');
+                document.getElementById('button_R_select').innerText = 'Button R_Select: ' + (data.R_Button_SELECT ? 'Pressed' : 'Released');
+                document.getElementById('button_R_start').innerText = 'Button R_Start: ' + (data.R_Button_START ? 'Pressed' : 'Released');
+
+            } catch (error) {
+                console.error('JSON Parsing Error:', error);
+            }
+            };
+            </script>
+            </body>
+            </html>
+            )rawliteral");
     });
 
     server.begin();
