@@ -1,183 +1,128 @@
+
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <ESPAsyncWebServer.h>
+#include <ArduinoJson.h>
 #include "parameters.h"
 
-// Definicje przycisków (używane do interpretacji stanów)
+// ===== DEFINICJE PRZYCISKÓW =====
 #define BUTTON_X         6
 #define BUTTON_Y         2
 #define BUTTON_A         5
 #define BUTTON_B         1
 #define BUTTON_SELECT    0
 #define BUTTON_START     16
-uint32_t button_mask = (1UL << BUTTON_X) | (1UL << BUTTON_Y) | (1UL << BUTTON_START) |
-                       (1UL << BUTTON_A) | (1UL << BUTTON_B) | (1UL << BUTTON_SELECT);
-uint32_t button_mask2 = button_mask;
 
-// Globalne zmienne do przechowywania odebranych danych
+// ====== WiFi Credentials ======
+const char* ssid = "ESP32-Network";
+const char* password = "12345678";
+
+// ====== Global Variables ======
+AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
+
+// Zmienna globalna na odebrane dane
 Message_from_Pad receivedPadData;
-Message_from_Platform_Mecanum receivedPlatformData;
 
-// Globalny mutex chroniący dane
-SemaphoreHandle_t dataMutex = NULL;
-
-// Zmienne do śledzenia czasu ostatniego odebrania (heartbeat)
-unsigned long lastReceivedPadTime = 0;
-unsigned long lastReceivedPlatformTime = 0;
-const unsigned long DATA_TIMEOUT = 2000; // Timeout 2000 ms (2 sekundy)
-
-// Funkcja porównująca dwa adresy MAC
-bool compareMAC(const uint8_t *mac1, const uint8_t *mac2) {
-    return memcmp(mac1, mac2, 6) == 0;
-}
-
-// ===== CALLBACK: Odbiór danych przez ESP-NOW =====
-void OnDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
-    xSemaphoreTake(dataMutex, portMAX_DELAY);
-    if (compareMAC(mac, macModulXiao)) {
-        memcpy(&receivedPadData, data, sizeof(receivedPadData));
-        lastReceivedPadTime = millis();  // Aktualizacja timera
-    } 
-    else if (compareMAC(mac, macPlatformMecanum)) {
-        memcpy(&receivedPlatformData, data, sizeof(receivedPlatformData));
-        lastReceivedPlatformTime = millis();
-    } 
-    else {
-        Serial.println("❌ Nieznany nadawca!");
-    }
-    xSemaphoreGive(dataMutex);
-}
-
-// ===== TASK: Wyświetlanie danych (displayTask) =====
-// Wyświetla dane na terminalu, aktualizując tylko określone linie za pomocą sekwencji ANSI.
-// Dodatkowo sprawdza heartbeat – jeśli od ostatniego odbioru minął DATA_TIMEOUT,
-// wyświetla komunikat o braku danych.
-void displayTask(void *parameter) {
-    (void)parameter;
-    const TickType_t updatePeriod = pdMS_TO_TICKS(100);  // 10 Hz
-    TickType_t lastUpdate = xTaskGetTickCount();
-    
-    // Numery linii wyświetlania
-    const uint8_t headerLine1 = 1;
-    const uint8_t headerLine2 = 2;
-    const uint8_t headerLine3 = 3;
-    const uint8_t padSectionStart = 5;
-    const uint8_t platformSectionStart = 15;
-    
-    // Lokalne kopie danych
-    Message_from_Pad localPadData;
-    Message_from_Platform_Mecanum localPlatformData;
-     Serial.print("\033[2J\033[H"); // Czyści ekran i ustawia kursor na górze
-    
-    while (1) {
-        // Kopiowanie danych chronionych mutexem
-        xSemaphoreTake(dataMutex, portMAX_DELAY);
-        memcpy(&localPadData, &receivedPadData, sizeof(localPadData));
-        memcpy(&localPlatformData, &receivedPlatformData, sizeof(localPlatformData));
-        unsigned long padTime = lastReceivedPadTime;
-        unsigned long platformTime = lastReceivedPlatformTime;
-        xSemaphoreGive(dataMutex);
-        
-        Serial.print("\033[2J\033[H"); // Czyści ekran i ustawia kursor na górze
-        // Sekcja Pada
-        Serial.print("L_X = "); Serial.print(localPadData.L_Joystick_x_message);
-        Serial.print("\tL_Y = \t"); Serial.print(localPadData.L_Joystick_y_message);
-        Serial.print("\tR_X = \t"); Serial.print(localPadData.R_Joystick_x_message);
-        Serial.print("\tR_Y = "); Serial.println(localPadData.R_Joystick_y_message);
-        
-        //przyciski
-        Serial.print("L: ");
-        if (! (localPadData.L_Joystick_buttons_message & (1UL << BUTTON_A))) {
-            Serial.print("Button A pressed\t");
-        }
-        if (! (localPadData.L_Joystick_buttons_message & (1UL << BUTTON_B))) {
-            Serial.print("Button B pressed\t");
-        }
-        if (! (localPadData.L_Joystick_buttons_message & (1UL << BUTTON_X))) {
-            Serial.print("Button X pressed\t");
-        }
-        if (! (localPadData.L_Joystick_buttons_message & (1UL << BUTTON_Y))) {
-            Serial.print("Button Y pressed\t");
-        }
-        if (! (localPadData.L_Joystick_buttons_message & (1UL << BUTTON_SELECT))) {
-            Serial.print("Button SELECT pressed\t");
-        }
-        if (! (localPadData.L_Joystick_buttons_message & (1UL << BUTTON_START))) {
-            Serial.print("Button START pressed\t");
-        }
-        Serial.println();
-        Serial.print("R: \t\t");
-        if (! (localPadData.R_Joystick_buttons_message & (1UL << BUTTON_A))) {
-            Serial.print("Button A pressed\t");
-        }
-        if (! (localPadData.R_Joystick_buttons_message & (1UL << BUTTON_B))) {
-            Serial.print("Button B pressed\t");
-        }
-        if (! (localPadData.R_Joystick_buttons_message & (1UL << BUTTON_X))) {
-            Serial.print("Button X pressed\t");
-        }
-        if (! (localPadData.R_Joystick_buttons_message & (1UL << BUTTON_Y))) {
-            Serial.print("Button Y pressed\t");
-        }
-        if (! (localPadData.R_Joystick_buttons_message & (1UL << BUTTON_SELECT))) {
-            Serial.print("Button SELECT pressed\t");
-        }   
-        if (! (localPadData.R_Joystick_buttons_message & (1UL << BUTTON_START))) {
-            Serial.print("Button START pressed\t");
-        }
-
-        
-        
-        
-        vTaskDelayUntil(&lastUpdate, updatePeriod);
+// ====== ESP-NOW Callback ======
+void onDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
+    if (len == sizeof(receivedPadData)) {
+        memcpy(&receivedPadData, incomingData, sizeof(receivedPadData));
+        Serial.println("✅ Dane z pada odebrane!");
     }
 }
 
+// ====== WebSocket Handler ======
+void handleWebSocketMessage(void *parameter) {
+    const TickType_t delayTime = pdMS_TO_TICKS(20);  // 50Hz odświeżanie
+
+    while (true) {
+        if (ws.count() > 0) {
+            DynamicJsonDocument json(512);
+
+            // Dane z pada
+            json["timestamp"] = receivedPadData.timestamp;
+            json["L_X"] = receivedPadData.L_Joystick_x_message;
+            json["L_Y"] = receivedPadData.L_Joystick_y_message;
+            json["R_X"] = receivedPadData.R_Joystick_x_message;
+            json["R_Y"] = receivedPadData.R_Joystick_y_message;
+
+            // Stany przycisków
+            json["L_Button_A"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_A));
+            json["L_Button_B"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_B));
+            json["L_Button_X"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_X));
+            json["L_Button_Y"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_Y));
+            json["L_Button_SELECT"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_SELECT));
+            json["L_Button_START"] = !(receivedPadData.L_Joystick_buttons_message & (1UL << BUTTON_START));
+
+            // Serializacja JSON → tekst
+            String jsonString;
+            serializeJson(json, jsonString);
+
+            // Wysłanie JSON przez WebSocket
+            ws.textAll(jsonString);
+        }
+        vTaskDelay(delayTime);
+    }
+}
+
+// ====== Setup ======
 void setup() {
-    setCpuFrequencyMhz(80); // Zmiana częstotliwości CPU na 80 MHz
     Serial.begin(115200);
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
+
+    // Inicjalizacja Wi-Fi
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(ssid, password);
+    Serial.print("AP IP Address: ");
+    Serial.println(WiFi.softAPIP());
 
     // Inicjalizacja ESP-NOW
     if (esp_now_init() != ESP_OK) {
-        Serial.println("❌ Błąd inicjalizacji ESP-NOW!");
+        Serial.println("❌ ESP-NOW Init Failed");
         return;
     }
-    esp_now_register_recv_cb(OnDataRecv);
+    esp_now_register_recv_cb(onDataRecv);
 
-    // Dodanie peerów – konfigurujemy Nadajniki (używamy MAC adresów z parameters.h)
-    esp_now_peer_info_t peerInfo = {};
-    memcpy(peerInfo.peer_addr, macModulXiao, 6);
-    peerInfo.channel = 0;
-    peerInfo.encrypt = false;
-    peerInfo.ifidx = WIFI_IF_STA;
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("❌ Nie można dodać Pada!");
-    }
-    memset(&peerInfo, 0, sizeof(esp_now_peer_info_t));
-    memcpy(peerInfo.peer_addr, macPlatformMecanum, 6);
-    peerInfo.channel = 0;
-    peerInfo.encrypt = false;
-    peerInfo.ifidx = WIFI_IF_STA;
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("❌ Nie można dodać Platformy!");
-    }
+    // Inicjalizacja WebSocket
+    ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client,
+                  AwsEventType type, void *arg, uint8_t *data, size_t len) {
+        if (type == WS_EVT_CONNECT) {
+            Serial.println("WebSocket client connected");
+        }
+    });
+    server.addHandler(&ws);
 
-    // Utworzenie mutexu dla danych
-    dataMutex = xSemaphoreCreateMutex();
-    if (dataMutex == NULL) {
-        Serial.println("❌ Błąd tworzenia mutexu!");
-        return;
-    }
+    // Start serwera HTTP
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/html",
+            "<html><body>"
+            "<h1>ESP32 WebSocket</h1>"
+            "<div id='data'></div>"
+            "<script>"
+            "const ws = new WebSocket('ws://' + window.location.host + '/ws');"
+            "ws.onmessage = e => document.getElementById('data').innerText = e.data;"
+            "</script>"
+            "</body></html>");
+    });
 
-    // Tworzenie tasku wyświetlania danych
-    xTaskCreatePinnedToCore(displayTask, "DisplayTask", 4096, NULL, 1, NULL, 0);
+    server.begin();
 
-    Serial.println("\n✅ System ESP-NOW + FreeRTOS gotowy!");
-     Serial.print("\033[2J\033[H"); // Czyści ekran i ustawia kursor na górze
+    // Utworzenie FreeRTOS Task do obsługi WebSocketów
+    xTaskCreatePinnedToCore(
+        handleWebSocketMessage, // Funkcja taska
+        "WebSocketTask",        // Nazwa taska
+        4096,                   // Rozmiar stosu
+        NULL,                   // Parametr
+        1,                      // Priorytet
+        NULL,                   // Uchwyt taska
+        1                       // Rdzeń
+    );
+
+    Serial.println("✅ ESP-NOW + WebSocket Server uruchomione");
 }
 
 void loop() {
-    // Pusta pętla – operacje odbywają się w taskach FreeRTOS
+    ws.cleanupClients(); // Czyszczenie połączeń WebSocket
 }
