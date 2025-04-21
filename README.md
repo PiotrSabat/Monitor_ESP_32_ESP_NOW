@@ -7,6 +7,7 @@ It functions as an external **TFT-based monitoring hub**, offering a more spacio
 
 ![Top view of the platform](assets/screen_debug_top.jpeg)
 
+
 ## Main Features
 - Receives structured ESP-NOW messages from the Pad
 - Parses joystick and button states
