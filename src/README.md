@@ -4,6 +4,8 @@ This repository contains firmware for a **dedicated ESP32-S3-based debug monitor
 
 It functions as an external **TFT-based monitoring hub**, offering a more spacious and detailed display compared to the onboard TFT of the Pad. Data is received via **ESP-NOW** and visualized live using a built-in **WebSocket web interface**.
 
+
+![Top view of the platform](assets/screen_debug_top.jpeg)
 ---
 
 ## Main Features
